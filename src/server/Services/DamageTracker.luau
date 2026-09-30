@@ -29,6 +29,7 @@ type TrackState = {
 	Humanoid: Humanoid,
 	LastHealth: number,
 	Connections: { RBXScriptConnection },
+	Accept: ((player: Player) -> boolean)?,
 }
 
 local DamageTracker = {}
@@ -91,8 +92,9 @@ function DamageTracker.ApplyDamage(model: Model, player: Player, amount: number)
 	return dealt
 end
 
--- Starts crediting classic "creator" tag damage on `model`.
-function DamageTracker.Track(model: Model)
+-- Starts crediting classic "creator" tag damage on `model`. If `accept` is
+-- given, hits from players it rejects are undone (their damage is healed back).
+function DamageTracker.Track(model: Model, accept: ((player: Player) -> boolean)?)
 	if tracked[model] then
 		return
 	end
@@ -103,6 +105,7 @@ function DamageTracker.Track(model: Model)
 		Humanoid = humanoid,
 		LastHealth = humanoid.Health,
 		Connections = {},
+		Accept = accept,
 	}
 	tracked[model] = state
 	getTagFolder(model)
@@ -123,6 +126,13 @@ function DamageTracker.Track(model: Model)
 			if creator and creator:IsA("ObjectValue") then
 				local attacker = creator.Value
 				if attacker and attacker:IsA("Player") then
+					if state.Accept and not state.Accept(attacker) then
+						if newHealth > 0 then
+							state.LastHealth = newHealth + delta
+							humanoid.Health = newHealth + delta
+						end
+						return
+					end
 					DamageTracker.Tag(model, attacker, delta)
 				end
 			end

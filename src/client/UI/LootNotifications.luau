@@ -2,6 +2,7 @@
 -- Dark Fantasy notifications:
 --   * Loot cards (top right) when the server grants you boss drops
 --   * Banners (top centre) when a boss spawns or is vanquished
+--   * Short notices (bottom centre), e.g. "claim a plot to fight the boss"
 -- Legendary and Mythic drops add a shimmering border, an edge glow and a
 -- centred splash.
 
@@ -28,6 +29,8 @@ local player = Players.LocalPlayer
 local screenGui: ScreenGui
 local cardStack: Frame
 local bannerHolder: Frame
+local noticeHolder: Frame
+local currentNotice: CanvasGroup? = nil
 local splashLayer: Frame
 local cardCounter = 0
 local bannerQueue: { any } = {}
@@ -617,6 +620,51 @@ function LootNotifications.ShowAnnouncement(payload: AnnouncementPayload)
 	end)
 end
 
+-- Notices ---------------------------------------------------------------------
+
+function LootNotifications.ShowNotice(text: string)
+	if currentNotice then
+		currentNotice:Destroy()
+	end
+	local toast = create("CanvasGroup", {
+		AnchorPoint = Vector2.new(0.5, 1),
+		Position = UDim2.new(0.5, 0, 1, 20),
+		Size = UDim2.new(1, 0, 0, 44),
+		BackgroundTransparency = 1,
+		GroupTransparency = 1,
+		Parent = noticeHolder,
+	})
+	currentNotice = toast
+	create("Frame", {
+		BackgroundColor3 = Theme.Background,
+		BackgroundTransparency = 0.1,
+		BorderSizePixel = 0,
+		Position = UDim2.fromOffset(2, 2),
+		Size = UDim2.new(1, -4, 1, -4),
+		ZIndex = 0,
+		Parent = toast,
+	}, {
+		corner(6),
+		create("UIStroke", { Color = Theme.Gold, Thickness = 1.2, Transparency = 0.2 }),
+	})
+	label({
+		Size = UDim2.fromScale(1, 1),
+		Font = Theme.HeadingFont,
+		TextSize = 17,
+		TextXAlignment = Enum.TextXAlignment.Center,
+		TextColor3 = Theme.Parchment,
+		Text = `<font color="{hex(Theme.Gold)}">◆</font>  {escape(text)}`,
+		Parent = toast,
+	})
+	tween(toast, 0.35, { Position = UDim2.new(0.5, 0, 1, 0), GroupTransparency = 0 })
+	task.delay(3.2, function()
+		if toast.Parent then
+			tween(toast, 0.4, { GroupTransparency = 1 }, Enum.EasingStyle.Sine).Completed:Wait()
+			toast:Destroy()
+		end
+	end)
+end
+
 -- Setup -----------------------------------------------------------------------
 
 local function buildGui()
@@ -642,6 +690,16 @@ local function buildGui()
 		BackgroundTransparency = 1,
 		Position = UDim2.new(0.5, 0, 0, 64),
 		Size = UDim2.fromOffset(560, 110),
+		Parent = screenGui,
+	})
+
+	noticeHolder = create("Frame", {
+		Name = "Notices",
+		AnchorPoint = Vector2.new(0.5, 1),
+		BackgroundTransparency = 1,
+		Position = UDim2.new(0.5, 0, 1, -110),
+		Size = UDim2.fromOffset(440, 60),
+		ClipsDescendants = false,
 		Parent = screenGui,
 	})
 
@@ -689,6 +747,11 @@ function LootNotifications.Start()
 	end)
 	Remotes.Get("BossAnnouncement").OnClientEvent:Connect(function(payload)
 		LootNotifications.ShowAnnouncement(payload)
+	end)
+	Remotes.Get("Notice").OnClientEvent:Connect(function(payload)
+		if type(payload) == "table" and type(payload.Text) == "string" then
+			LootNotifications.ShowNotice(payload.Text)
+		end
 	end)
 end
 

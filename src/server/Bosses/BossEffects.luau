@@ -160,22 +160,35 @@ function BossEffects.FallingOrb(target: Vector3, size: number, duration: number,
 end
 
 -- Fades a defeated boss away with a burst of particles in its aura color.
+-- Only the root is anchored, so the joints keep working and clients can play
+-- the collapse animation while it fades.
 function BossEffects.Dissolve(model: Model, color: Color3, duration: number)
+	local root = model.PrimaryPart
+	if root then
+		root.Anchored = true
+	end
 	for _, descendant in model:GetDescendants() do
 		if descendant:IsA("BasePart") then
-			descendant.Anchored = true
 			descendant.CanCollide = false
 			if descendant.Transparency < 1 then
-				tween(descendant, duration, { Transparency = 1 }, Enum.EasingStyle.Sine)
+				-- Hold for the collapse, then fade.
+				task.delay(duration * 0.35, function()
+					tween(descendant, duration * 0.65, { Transparency = 1 }, Enum.EasingStyle.Sine)
+				end)
 			end
 		elseif descendant:IsA("Decal") then
 			tween(descendant, duration, { Transparency = 1 }, Enum.EasingStyle.Sine)
 		elseif descendant:IsA("BillboardGui") then
 			descendant.Enabled = false
+		elseif descendant:IsA("ParticleEmitter") or descendant:IsA("Fire") or descendant:IsA("Trail") then
+			task.delay(duration * 0.5, function()
+				if descendant.Parent then
+					(descendant :: any).Enabled = false
+				end
+			end)
 		end
 	end
 
-	local root = model.PrimaryPart
 	if root then
 		local emitter = Instance.new("ParticleEmitter")
 		emitter.Color = ColorSequence.new(color, Color3.new(0, 0, 0))
@@ -193,6 +206,31 @@ function BossEffects.Dissolve(model: Model, color: Color3, duration: number)
 		emitter.Parent = root
 		emitter:Emit(80)
 	end
+end
+
+-- A flash and ring of light when a boss emerges from the Dark Portal.
+function BossEffects.PortalBurst(position: Vector3, color: Color3, size: number)
+	BossEffects.Shockwave(position, size, color)
+	local ring = makePart({
+		Name = "PortalRing",
+		Shape = Enum.PartType.Cylinder,
+		Size = Vector3.new(0.3, 2, 2),
+		CFrame = CFrame.new(BossEffects.GroundAt(position) + Vector3.new(0, 0.2, 0)) * FLAT,
+		Color = color,
+		Transparency = 0.2,
+	})
+	tween(ring, 1.2, { Size = Vector3.new(0.3, size * 2.5, size * 2.5), Transparency = 1 }, Enum.EasingStyle.Quad)
+	Debris:AddItem(ring, 1.3)
+	local pillar = makePart({
+		Name = "PortalPillar",
+		Shape = Enum.PartType.Cylinder,
+		Size = Vector3.new(90, size * 0.8, size * 0.8),
+		CFrame = CFrame.new(BossEffects.GroundAt(position) + Vector3.new(0, 45, 0)) * FLAT,
+		Color = color,
+		Transparency = 0.3,
+	})
+	tween(pillar, 2, { Transparency = 1, Size = Vector3.new(90, 0.5, 0.5) }, Enum.EasingStyle.Sine, Enum.EasingDirection.In)
+	Debris:AddItem(pillar, 2.1)
 end
 
 -- Rarity-colored orbs bursting out of a defeated boss, plus a pillar of light

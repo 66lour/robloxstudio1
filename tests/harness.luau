@@ -75,6 +75,16 @@ local function loadFile(path: string)
 		Color3 = roblox.Color3,
 		Enum = roblox.Enum,
 		Vector3 = roblox.Vector3,
+		Vector2 = roblox.Vector2,
+		CFrame = roblox.CFrame,
+		ColorSequence = roblox.ColorSequence,
+		ColorSequenceKeypoint = roblox.ColorSequenceKeypoint,
+		NumberSequence = roblox.NumberSequence,
+		NumberSequenceKeypoint = roblox.NumberSequenceKeypoint,
+		NumberRange = roblox.NumberRange,
+		UDim = roblox.UDim,
+		UDim2 = roblox.UDim2,
+		Instance = roblox.Instance,
 		Random = Random,
 		require = Harness.require,
 	}
@@ -128,6 +138,10 @@ end
 
 function Harness.server()
 	return makeNode("src/server")
+end
+
+function Harness.client()
+	return makeNode("src/client")
 end
 
 return Harness

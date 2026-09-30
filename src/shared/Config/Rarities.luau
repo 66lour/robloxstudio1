@@ -17,6 +17,8 @@ export type RarityInfo = {
 	-- 100, so they read as percentages.
 	SpawnWeight: number,
 	-- Base boss stats for this tier. Each boss can adjust them by up to +/-10%.
+	-- HP is tuned for the weapon ladder in WeaponCatalog (5 damage starter up to
+	-- 1000 damage Reaper's Mythic Blade), so higher tiers need a group.
 	BaseHealth: number,
 	BaseDamage: number,
 	BaseScale: number, -- 1 = regular character size
@@ -33,7 +35,7 @@ Rarities.Info = {
 		Color = Color3.fromRGB(176, 168, 152),
 		AccentColor = Color3.fromRGB(110, 104, 94),
 		SpawnWeight = 48,
-		BaseHealth = 1500,
+		BaseHealth = 5000,
 		BaseDamage = 12,
 		BaseScale = 1.5,
 	},
@@ -43,7 +45,7 @@ Rarities.Info = {
 		Color = Color3.fromRGB(104, 196, 118),
 		AccentColor = Color3.fromRGB(38, 110, 64),
 		SpawnWeight = 27,
-		BaseHealth = 4000,
+		BaseHealth = 9000,
 		BaseDamage = 18,
 		BaseScale = 2.0,
 	},
@@ -53,7 +55,7 @@ Rarities.Info = {
 		Color = Color3.fromRGB(86, 150, 240),
 		AccentColor = Color3.fromRGB(30, 62, 140),
 		SpawnWeight = 15,
-		BaseHealth = 10000,
+		BaseHealth = 16500,
 		BaseDamage = 26,
 		BaseScale = 2.6,
 	},
@@ -63,7 +65,7 @@ Rarities.Info = {
 		Color = Color3.fromRGB(178, 96, 240),
 		AccentColor = Color3.fromRGB(84, 30, 140),
 		SpawnWeight = 6,
-		BaseHealth = 25000,
+		BaseHealth = 30000,
 		BaseDamage = 38,
 		BaseScale = 3.3,
 	},
@@ -73,7 +75,7 @@ Rarities.Info = {
 		Color = Color3.fromRGB(244, 178, 64),
 		AccentColor = Color3.fromRGB(160, 82, 18),
 		SpawnWeight = 3,
-		BaseHealth = 60000,
+		BaseHealth = 55000,
 		BaseDamage = 55,
 		BaseScale = 4.2,
 	},
@@ -83,7 +85,7 @@ Rarities.Info = {
 		Color = Color3.fromRGB(236, 54, 76),
 		AccentColor = Color3.fromRGB(255, 140, 90),
 		SpawnWeight = 1,
-		BaseHealth = 150000,
+		BaseHealth = 100000,
 		BaseDamage = 80,
 		BaseScale = 5.5,
 	},

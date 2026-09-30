@@ -1,112 +1,126 @@
 --!strict
--- Studio-only testing helpers. Not started in live servers.
+-- Studio-only chat commands for testing the boss system. Not started in live
+-- servers.
 --
---   * Gives every player a "Test Soulreaver" sword. Its hits go through
---     DamageTracker.ApplyDamage, so they are tagged like real combat. Each hit
---     deals 2% of the boss's max health (at least 150) so even Mythics die fast.
---   * Chat "!boss <id>" (e.g. "!boss pale_king") to spawn a specific boss, or
---     "!boss" for a random roll.
+--   !boss [id]       replace the current boss with a new one now (random if no id)
+--   !despawn         remove the current boss (no loot); the 20-minute timer restarts
+--   !timer [seconds] set the portal countdown (default 10)
+--   !plot            toggle your "Plot" attribute: bosses only fight players with a plot
+--   !weapon <id|all> give yourself a weapon from WeaponCatalog (e.g. !weapon reapers_mythic_blade)
+--   !bosses          list boss ids
 
-local CollectionService = game:GetService("CollectionService")
 local Players = game:GetService("Players")
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
 
 local BossRoster = require(ReplicatedStorage.Shared.Config.BossRoster)
-local BossBuilder = require(script.Parent.Parent.Bosses.BossBuilder)
+local Remotes = require(ReplicatedStorage.Shared.Remotes)
+local WeaponCatalog = require(ReplicatedStorage.Shared.Config.WeaponCatalog)
 local BossService = require(script.Parent.Parent.Bosses.BossService)
-local DamageTracker = require(script.Parent.Parent.Services.DamageTracker)
-
-local SWING_COOLDOWN = 0.35
-local BASE_REACH = 9
+local BossSpawnCycle = require(script.Parent.Parent.Bosses.BossSpawnCycle)
+local PlotService = require(script.Parent.Parent.Services.PlotService)
+local WeaponService = require(script.Parent.Parent.Weapons.WeaponService)
 
 local DevTools = {}
 
-local function makeSword(): Tool
-	local tool = Instance.new("Tool")
-	tool.Name = "Test Soulreaver"
-	tool.ToolTip = "Studio test weapon"
-	tool.CanBeDropped = false
-	tool.Grip = CFrame.new(0, -1.6, 0)
+local notice = Remotes.Get("Notice")
 
-	local handle = Instance.new("Part")
-	handle.Name = "Handle"
-	handle.Size = Vector3.new(0.3, 4, 0.3)
-	handle.Color = Color3.fromRGB(170, 60, 255)
-	handle.Material = Enum.Material.Neon
-	handle.CanCollide = false
-	handle.Massless = true
-	handle.Parent = tool
-
-	local lastSwing = 0
-	tool.Activated:Connect(function()
-		local now = os.clock()
-		if now - lastSwing < SWING_COOLDOWN then
-			return
-		end
-		lastSwing = now
-
-		local character = tool.Parent
-		local player = character and Players:GetPlayerFromCharacter(character)
-		local root = character and character:FindFirstChild("HumanoidRootPart") :: BasePart?
-		if not player or not root then
-			return
-		end
-
-		for _, instance in CollectionService:GetTagged(BossBuilder.Tag) do
-			local boss = instance :: Model
-			local bossRoot = boss.PrimaryPart
-			local humanoid = boss:FindFirstChildOfClass("Humanoid")
-			if bossRoot and humanoid and humanoid.Health > 0 then
-				local reach = BASE_REACH + bossRoot.Size.X
-				if (bossRoot.Position - root.Position).Magnitude <= reach then
-					DamageTracker.ApplyDamage(boss, player, math.max(150, humanoid.MaxHealth * 0.02))
-				end
-			end
-		end
-	end)
-
-	return tool
+local function tell(player: Player, text: string)
+	print(`[DevTools] {text}`)
+	notice:FireClient(player, { Text = text })
 end
 
-local function giveSword(player: Player)
-	local backpack = player:WaitForChild("Backpack", 10)
-	if backpack and not backpack:FindFirstChild("Test Soulreaver") then
-		makeSword().Parent = backpack
+local function bossIds(): string
+	local ids = {}
+	for _, def in BossRoster.List do
+		table.insert(ids, def.Id)
 	end
+	return table.concat(ids, ", ")
 end
 
-local function onChatted(message: string)
-	local command, match = string.match(message, "^!(%w+)%s*(%S*)")
-	if command ~= "boss" then
-		return
-	end
-	local argument = match or ""
+local COMMANDS: { [string]: (player: Player, argument: string) -> () } = {}
+
+function COMMANDS.boss(player, argument)
 	if argument ~= "" and not BossRoster.Get(argument) then
-		local ids = {}
-		for _, def in BossRoster.List do
-			table.insert(ids, def.Id)
-		end
-		warn(`[DevTools] Unknown boss "{argument}". Ids: {table.concat(ids, ", ")}`)
+		tell(player, `Unknown boss "{argument}". Ids: {bossIds()}`)
 		return
 	end
-	BossService.Spawn(if argument ~= "" then argument else nil)
+	local model = BossSpawnCycle.SpawnNow(if argument ~= "" then argument else nil)
+	tell(player, if model then `Spawned {model.Name} at the Dark Portal` else "Boss spawn failed (see output)")
+end
+
+function COMMANDS.despawn(player)
+	if BossService.GetActive() then
+		BossService.Despawn()
+		tell(player, "Boss removed; the portal countdown restarted")
+	else
+		tell(player, "No boss is alive")
+	end
+end
+
+function COMMANDS.timer(player, argument)
+	local seconds = tonumber(argument) or 10
+	if BossService.GetActive() then
+		tell(player, "A boss is alive; the timer only runs while the map has no boss")
+		return
+	end
+	BossSpawnCycle.ResetTimer(seconds)
+	tell(player, `Next boss in {seconds} s`)
+end
+
+function COMMANDS.plot(player)
+	local assigned = PlotService.IsAssigned(player)
+	player:SetAttribute("Plot", if assigned then "Not Assigned" else "Studio Test Plot")
+	-- The assignment is cached briefly; report the value we just set.
+	tell(player, if assigned then "You are now a guest: bosses ignore you and you can't hurt them" else "You now own a (test) plot: bosses will hunt you")
+end
+
+function COMMANDS.weapon(player, argument)
+	if argument == "all" then
+		for _, def in WeaponCatalog.List do
+			WeaponService.Give(player, def.Id)
+		end
+		tell(player, "Gave every weapon")
+		return
+	end
+	local def = WeaponCatalog.Get(argument)
+	if not def then
+		local ids = {}
+		for _, weapon in WeaponCatalog.List do
+			table.insert(ids, `{weapon.Id} ({weapon.Damage})`)
+		end
+		tell(player, `Unknown weapon. Ids: {table.concat(ids, ", ")}`)
+		return
+	end
+	WeaponService.Give(player, def.Id)
+	tell(player, `Gave {def.Name}`)
+end
+
+function COMMANDS.bosses(player)
+	tell(player, `Boss ids: {bossIds()}`)
+end
+
+local function onChatted(player: Player, message: string)
+	local command, match = string.match(message, "^!(%w+)%s*(.-)%s*$")
+	if not command then
+		return
+	end
+	local handler = COMMANDS[string.lower(command)]
+	if handler then
+		handler(player, match or "")
+	end
 end
 
 function DevTools.Start()
 	local function onPlayer(player: Player)
-		player.CharacterAdded:Connect(function()
-			giveSword(player)
+		player.Chatted:Connect(function(message)
+			onChatted(player, message)
 		end)
-		if player.Character then
-			task.spawn(giveSword, player)
-		end
-		player.Chatted:Connect(onChatted)
 	end
 	Players.PlayerAdded:Connect(onPlayer)
 	for _, player in Players:GetPlayers() do
 		onPlayer(player)
 	end
-	print("[DevTools] Studio test sword enabled. Chat '!boss <id>' to spawn a boss.")
+	print("[DevTools] Studio commands: !boss [id], !despawn, !timer [seconds], !plot, !weapon <id|all>, !bosses")
 end
 
 return DevTools

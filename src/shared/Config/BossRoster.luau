@@ -10,26 +10,30 @@
 -- that tier by the boss's own SpawnWeight (default 1). GetSpawnChances()
 -- returns the resulting percentage for each boss.
 --
+-- Movement: every boss walks at 8-10 studs/s (players run at 16), so bosses
+-- are slow, relentless pursuers. Enrage can't push them past MAX_WALK_SPEED.
+-- AnimStyle picks the boss's walk/idle animation (client BossAnimator).
+--
+-- Looks: each boss's model is built by the design module with the same name as
+-- its Id in ServerScriptService.Server.Bosses.Models.Designs. Appearance holds
+-- the colors other systems reuse (ability effects, loot glow).
+--
 -- Abilities: `Abilities` entries are active skills with cooldowns and
 -- `Passives` trigger by themselves. Missing parameters fall back to the
 -- defaults in ServerScriptService.Server.Bosses.BossAbilities.
+--
+-- Uploaded animations (optional): set `Animations = { Walk = "rbxassetid://…",
+-- Idle = "…", Melee = "…" }` on a boss to play Animation Editor animations
+-- instead of the built-in procedural ones (see docs/BOSS_SETUP.md).
 
 local ItemCatalog = require(script.Parent.ItemCatalog)
 local Rarities = require(script.Parent.Rarities)
 
 type RarityName = Rarities.RarityName
 
-export type HeadShape = "Block" | "Ball" | "Skull" | "Pumpkin"
-export type Feature = "Horns" | "Crown" | "Hood" | "Wings" | "Halo" | "Spikes" | "Pauldrons" | "FloatingOrbs" | "Floating"
-
 export type Appearance = {
-	Body: Color3,
-	Accent: Color3,
+	Aura: Color3, -- ability telegraphs, impacts, death dissolve
 	Eyes: Color3,
-	Material: Enum.Material,
-	Head: HeadShape,
-	Features: { Feature },
-	Aura: Color3,
 }
 
 export type AbilitySpec = { [string]: any } -- { Kind = "Slam" | "Charge" | "Blink" | "Drain" | "Meteor" | "Nova", ...params }
@@ -45,13 +49,16 @@ export type BossDef = {
 	HealthMod: number,
 	DamageMod: number,
 	ScaleMod: number,
-	WalkSpeed: number,
+	WalkSpeed: number, -- 8-10
+	AnimStyle: string, -- one of BossRoster.AnimStyles
 	AttackCooldown: number,
 	Appearance: Appearance,
 	Abilities: { AbilitySpec },
 	Passives: { PassiveSpec },
 	-- Chance (0-1) that this boss's exclusive item joins the regular drops.
 	ExclusiveDropChance: number,
+	-- Optional uploaded animation ids, keyed by Idle/Walk or an action name.
+	Animations: { [string]: string }?,
 }
 
 export type BossStats = {
@@ -64,6 +71,28 @@ local rgb = Color3.fromRGB
 
 local BossRoster = {}
 
+BossRoster.MIN_WALK_SPEED = 8
+BossRoster.MAX_WALK_SPEED = 10
+
+-- Walk/idle styles implemented by the client BossAnimator.
+BossRoster.AnimStyles = {
+	"March",
+	"Shamble",
+	"Hunch",
+	"GlideArmor",
+	"Scurry",
+	"Lumber",
+	"Scarecrow",
+	"Stalk",
+	"Levitate",
+	"Glide",
+	"Tread",
+	"Stomp",
+	"Soar",
+	"Drift",
+	"Regal",
+}
+
 BossRoster.List = {
 	-- ═══════════════════════════════ COMMON ═══════════════════════════════
 	{
@@ -75,16 +104,12 @@ BossRoster.List = {
 		HealthMod = 1.0,
 		DamageMod = 1.0,
 		ScaleMod = 1.0,
-		WalkSpeed = 13,
+		WalkSpeed = 9,
+		AnimStyle = "March",
 		AttackCooldown = 1.6,
 		Appearance = {
-			Body = rgb(222, 214, 194),
-			Accent = rgb(70, 58, 46),
-			Eyes = rgb(120, 255, 160),
-			Material = Enum.Material.SmoothPlastic,
-			Head = "Skull",
-			Features = { "Pauldrons" },
 			Aura = rgb(90, 220, 130),
+			Eyes = rgb(120, 255, 160),
 		},
 		Abilities = {
 			{ Kind = "Slam", Cooldown = 9, Radius = 10, Windup = 1.2, DamageMult = 1.5 },
@@ -101,16 +126,12 @@ BossRoster.List = {
 		HealthMod = 0.92,
 		DamageMod = 1.08,
 		ScaleMod = 0.95,
-		WalkSpeed = 15,
+		WalkSpeed = 9,
+		AnimStyle = "Shamble",
 		AttackCooldown = 1.3,
 		Appearance = {
-			Body = rgb(104, 122, 88),
-			Accent = rgb(90, 40, 40),
-			Eyes = rgb(255, 220, 90),
-			Material = Enum.Material.Sand,
-			Head = "Block",
-			Features = { "Spikes" },
 			Aura = rgb(150, 180, 70),
+			Eyes = rgb(255, 220, 90),
 		},
 		Abilities = {
 			{ Kind = "Charge", Cooldown = 10, Speed = 38, Windup = 0.9, HitRadius = 5, DamageMult = 1.4 },
@@ -127,16 +148,12 @@ BossRoster.List = {
 		HealthMod = 1.08,
 		DamageMod = 0.92,
 		ScaleMod = 1.05,
-		WalkSpeed = 11,
+		WalkSpeed = 8,
+		AnimStyle = "Hunch",
 		AttackCooldown = 1.8,
 		Appearance = {
-			Body = rgb(72, 92, 62),
-			Accent = rgb(44, 54, 38),
-			Eyes = rgb(200, 255, 120),
-			Material = Enum.Material.Slate,
-			Head = "Ball",
-			Features = { "Hood" },
 			Aura = rgb(120, 200, 90),
+			Eyes = rgb(200, 255, 120),
 		},
 		Abilities = {
 			{ Kind = "Drain", Cooldown = 12, Duration = 3, Radius = 12, DamageMult = 0.35, HealRatio = 1.0 },
@@ -150,21 +167,17 @@ BossRoster.List = {
 		Id = "wraith_knight",
 		Name = "Wraith Knight",
 		Title = "Oathbreaker of the Pale Order",
-		Lore = "He swore to guard the king forever. The king died; the oath did not.",
+		Lore = "He swore to guard the king forever. The king died; the oath did not. Only his obsidian armor remains, held together by spite.",
 		Rarity = "Uncommon",
 		HealthMod = 1.0,
 		DamageMod = 1.05,
 		ScaleMod = 1.0,
-		WalkSpeed = 15,
+		WalkSpeed = 10,
+		AnimStyle = "GlideArmor",
 		AttackCooldown = 1.4,
 		Appearance = {
-			Body = rgb(42, 46, 58),
-			Accent = rgb(150, 172, 204),
-			Eyes = rgb(120, 200, 255),
-			Material = Enum.Material.Metal,
-			Head = "Block",
-			Features = { "Hood", "Pauldrons", "Floating" },
 			Aura = rgb(110, 170, 255),
+			Eyes = rgb(120, 200, 255),
 		},
 		Abilities = {
 			{ Kind = "Blink", Cooldown = 9, Radius = 8, Windup = 0.45, DamageMult = 1.6 },
@@ -181,17 +194,13 @@ BossRoster.List = {
 		Rarity = "Uncommon",
 		HealthMod = 0.94,
 		DamageMod = 0.95,
-		ScaleMod = 0.92,
-		WalkSpeed = 16,
+		ScaleMod = 0.97,
+		WalkSpeed = 10,
+		AnimStyle = "Scurry",
 		AttackCooldown = 1.2,
 		Appearance = {
-			Body = rgb(94, 82, 72),
-			Accent = rgb(160, 150, 44),
-			Eyes = rgb(255, 60, 60),
-			Material = Enum.Material.Fabric,
-			Head = "Ball",
-			Features = { "Crown", "Spikes" },
 			Aura = rgb(170, 200, 40),
+			Eyes = rgb(255, 60, 60),
 		},
 		Abilities = {
 			{ Kind = "Meteor", Cooldown = 11, Count = 3, Radius = 7, Windup = 1.4, DamageMult = 1.3, Range = 50, Color = rgb(150, 210, 40) },
@@ -209,17 +218,13 @@ BossRoster.List = {
 		Rarity = "Uncommon",
 		HealthMod = 1.1,
 		DamageMod = 1.0,
-		ScaleMod = 1.1,
-		WalkSpeed = 10,
+		ScaleMod = 1.05,
+		WalkSpeed = 8,
+		AnimStyle = "Lumber",
 		AttackCooldown = 2.0,
 		Appearance = {
-			Body = rgb(112, 112, 118),
-			Accent = rgb(70, 210, 170),
-			Eyes = rgb(70, 255, 210),
-			Material = Enum.Material.Slate,
-			Head = "Block",
-			Features = { "Pauldrons", "Spikes" },
 			Aura = rgb(70, 210, 170),
+			Eyes = rgb(70, 255, 210),
 		},
 		Abilities = {
 			{ Kind = "Slam", Cooldown = 10, Radius = 14, Windup = 1.5, DamageMult = 1.9 },
@@ -234,21 +239,17 @@ BossRoster.List = {
 		Id = "pumpkin_lord",
 		Name = "Ancient Pumpkin Lord",
 		Title = "Harvester of Souls",
-		Lore = "Every autumn he walks the fields, and every autumn the scarecrows are new.",
+		Lore = "A scarecrow that stood watch over the harvest for a thousand years, until something set the skull inside its head ablaze.",
 		Rarity = "Rare",
 		HealthMod = 1.05,
 		DamageMod = 1.0,
 		ScaleMod = 1.05,
-		WalkSpeed = 14,
+		WalkSpeed = 9,
+		AnimStyle = "Scarecrow",
 		AttackCooldown = 1.5,
 		Appearance = {
-			Body = rgb(34, 26, 22),
-			Accent = rgb(240, 120, 20),
-			Eyes = rgb(255, 200, 60),
-			Material = Enum.Material.Fabric,
-			Head = "Pumpkin",
-			Features = { "Pauldrons", "Hood" },
 			Aura = rgb(255, 130, 30),
+			Eyes = rgb(255, 200, 60),
 		},
 		Abilities = {
 			{ Kind = "Meteor", Cooldown = 10, Count = 4, Radius = 8, Windup = 1.3, DamageMult = 1.4, Range = 60, Color = rgb(255, 120, 20) },
@@ -268,16 +269,12 @@ BossRoster.List = {
 		HealthMod = 0.9,
 		DamageMod = 1.1,
 		ScaleMod = 0.95,
-		WalkSpeed = 20,
+		WalkSpeed = 10,
+		AnimStyle = "Stalk",
 		AttackCooldown = 1.0,
 		Appearance = {
-			Body = rgb(72, 52, 42),
-			Accent = rgb(180, 30, 30),
-			Eyes = rgb(255, 40, 40),
-			Material = Enum.Material.Fabric,
-			Head = "Block",
-			Features = { "Horns", "Spikes" },
 			Aura = rgb(200, 30, 40),
+			Eyes = rgb(255, 40, 40),
 		},
 		Abilities = {
 			{ Kind = "Charge", Cooldown = 7, Speed = 52, Windup = 0.6, HitRadius = 6, DamageMult = 1.3 },
@@ -297,16 +294,12 @@ BossRoster.List = {
 		HealthMod = 1.0,
 		DamageMod = 1.05,
 		ScaleMod = 1.0,
-		WalkSpeed = 12,
+		WalkSpeed = 8,
+		AnimStyle = "Levitate",
 		AttackCooldown = 1.7,
 		Appearance = {
-			Body = rgb(62, 42, 82),
-			Accent = rgb(170, 255, 220),
-			Eyes = rgb(90, 255, 230),
-			Material = Enum.Material.Fabric,
-			Head = "Skull",
-			Features = { "Crown", "Hood", "FloatingOrbs", "Floating" },
 			Aura = rgb(120, 255, 220),
+			Eyes = rgb(90, 255, 230),
 		},
 		Abilities = {
 			{ Kind = "Meteor", Cooldown = 9, Count = 5, Radius = 6, Windup = 1.2, DamageMult = 1.1, Range = 70, Color = rgb(110, 255, 220) },
@@ -326,17 +319,13 @@ BossRoster.List = {
 		Rarity = "Epic",
 		HealthMod = 0.95,
 		DamageMod = 1.05,
-		ScaleMod = 0.95,
-		WalkSpeed = 16,
+		ScaleMod = 1.0,
+		WalkSpeed = 10,
+		AnimStyle = "Glide",
 		AttackCooldown = 1.4,
 		Appearance = {
-			Body = rgb(196, 220, 240),
-			Accent = rgb(80, 140, 210),
-			Eyes = rgb(210, 240, 255),
-			Material = Enum.Material.Ice,
-			Head = "Ball",
-			Features = { "Hood", "Floating", "FloatingOrbs" },
 			Aura = rgb(150, 210, 255),
+			Eyes = rgb(210, 240, 255),
 		},
 		Abilities = {
 			{ Kind = "Nova", Cooldown = 11, Radius = 22, Windup = 1.4, DamageMult = 1.2, SlowFactor = 0.45, SlowDuration = 4 },
@@ -356,17 +345,13 @@ BossRoster.List = {
 		Rarity = "Epic",
 		HealthMod = 1.1,
 		DamageMod = 0.95,
-		ScaleMod = 1.1,
-		WalkSpeed = 12,
+		ScaleMod = 1.0,
+		WalkSpeed = 8,
+		AnimStyle = "Tread",
 		AttackCooldown = 1.8,
 		Appearance = {
-			Body = rgb(22, 32, 44),
-			Accent = rgb(40, 210, 210),
-			Eyes = rgb(60, 255, 240),
-			Material = Enum.Material.Basalt,
-			Head = "Block",
-			Features = { "Horns", "Spikes", "Pauldrons" },
 			Aura = rgb(40, 200, 210),
+			Eyes = rgb(60, 255, 240),
 		},
 		Abilities = {
 			{ Kind = "Slam", Cooldown = 9, Radius = 18, Windup = 1.4, DamageMult = 1.8 },
@@ -389,16 +374,12 @@ BossRoster.List = {
 		HealthMod = 1.1,
 		DamageMod = 1.0,
 		ScaleMod = 1.1,
-		WalkSpeed = 11,
+		WalkSpeed = 8,
+		AnimStyle = "Stomp",
 		AttackCooldown = 1.9,
 		Appearance = {
-			Body = rgb(42, 32, 30),
-			Accent = rgb(255, 110, 30),
-			Eyes = rgb(255, 190, 50),
-			Material = Enum.Material.Basalt,
-			Head = "Block",
-			Features = { "Horns", "Pauldrons", "Spikes" },
 			Aura = rgb(255, 100, 20),
+			Eyes = rgb(255, 190, 50),
 		},
 		Abilities = {
 			{ Kind = "Slam", Cooldown = 8, Radius = 22, Windup = 1.5, DamageMult = 2.0 },
@@ -419,16 +400,12 @@ BossRoster.List = {
 		HealthMod = 0.95,
 		DamageMod = 1.1,
 		ScaleMod = 0.95,
-		WalkSpeed = 17,
+		WalkSpeed = 10,
+		AnimStyle = "Soar",
 		AttackCooldown = 1.3,
 		Appearance = {
-			Body = rgb(28, 24, 34),
-			Accent = rgb(255, 204, 96),
-			Eyes = rgb(255, 220, 120),
-			Material = Enum.Material.Marble,
-			Head = "Ball",
-			Features = { "Wings", "Halo", "Floating" },
 			Aura = rgb(255, 196, 80),
+			Eyes = rgb(255, 220, 120),
 		},
 		Abilities = {
 			{ Kind = "Blink", Cooldown = 7, Radius = 11, Windup = 0.35, DamageMult = 1.6 },
@@ -451,16 +428,12 @@ BossRoster.List = {
 		HealthMod = 1.1,
 		DamageMod = 1.0,
 		ScaleMod = 1.1,
-		WalkSpeed = 13,
+		WalkSpeed = 9,
+		AnimStyle = "Drift",
 		AttackCooldown = 1.6,
 		Appearance = {
-			Body = rgb(16, 12, 26),
-			Accent = rgb(190, 60, 255),
-			Eyes = rgb(255, 60, 230),
-			Material = Enum.Material.Glass,
-			Head = "Ball",
-			Features = { "Horns", "Wings", "FloatingOrbs", "Spikes", "Floating" },
 			Aura = rgb(170, 50, 255),
+			Eyes = rgb(255, 60, 230),
 		},
 		Abilities = {
 			{ Kind = "Drain", Cooldown = 14, Duration = 4, Radius = 24, DamageMult = 0.5, HealRatio = 2.0 },
@@ -482,16 +455,12 @@ BossRoster.List = {
 		HealthMod = 1.0,
 		DamageMod = 1.1,
 		ScaleMod = 1.0,
-		WalkSpeed = 15,
+		WalkSpeed = 9,
+		AnimStyle = "Regal",
 		AttackCooldown = 1.4,
 		Appearance = {
-			Body = rgb(232, 230, 222),
-			Accent = rgb(200, 30, 50),
-			Eyes = rgb(255, 40, 60),
-			Material = Enum.Material.Marble,
-			Head = "Skull",
-			Features = { "Crown", "Pauldrons", "Hood", "Halo" },
 			Aura = rgb(230, 40, 60),
+			Eyes = rgb(255, 40, 60),
 		},
 		Abilities = {
 			{ Kind = "Slam", Cooldown = 8, Radius = 24, Windup = 1.4, DamageMult = 2.1 },
@@ -524,6 +493,11 @@ for _, def in BossRoster.List do
 		local value = (def :: any)[field]
 		assert(value >= MOD_MIN and value <= MOD_MAX, `Boss "{def.Id}" {field} must be within [{MOD_MIN}, {MOD_MAX}]`)
 	end
+	assert(
+		def.WalkSpeed >= BossRoster.MIN_WALK_SPEED and def.WalkSpeed <= BossRoster.MAX_WALK_SPEED,
+		`Boss "{def.Id}" WalkSpeed must be within [{BossRoster.MIN_WALK_SPEED}, {BossRoster.MAX_WALK_SPEED}]`
+	)
+	assert(table.find(BossRoster.AnimStyles, def.AnimStyle), `Boss "{def.Id}" has unknown AnimStyle "{tostring(def.AnimStyle)}"`)
 	for _, ability in def.Abilities do
 		assert(KNOWN_ABILITIES[ability.Kind], `Boss "{def.Id}" has unknown ability "{tostring(ability.Kind)}"`)
 	end

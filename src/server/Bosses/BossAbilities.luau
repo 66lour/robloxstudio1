@@ -9,11 +9,15 @@
 --   Drain  – channels, damaging nearby players and healing from it
 --   Meteor – rains orbs on players' positions
 --   Nova   – large burst around the boss that also slows
+--
+-- Only players who may be targeted (assigned to a plot and outside their own
+-- tycoon, see PlotService) are ever hit; guests can't be hurt.
 
 local Players = game:GetService("Players")
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
 
 local BossRoster = require(ReplicatedStorage.Shared.Config.BossRoster)
+local PlotService = require(script.Parent.Parent.Services.PlotService)
 local BossEffects = require(script.Parent.BossEffects)
 
 type BossDef = BossRoster.BossDef
@@ -30,6 +34,8 @@ export type Context = {
 	GetDamage: () -> number, -- current base damage (includes enrage)
 	GetWalkSpeed: () -> number, -- current walk speed (includes enrage)
 	IsAlive: () -> boolean,
+	-- Tells clients to play an animation (see client ActionPoses).
+	PlayAction: (name: string, windup: number, duration: number?) -> (),
 }
 
 type Spec = { [string]: any }
@@ -60,14 +66,14 @@ local function flat(v: Vector3): Vector3
 	return Vector3.new(v.X, 0, v.Z)
 end
 
--- Living player humanoids within `radius` (horizontally) of `center`.
+-- Living, targetable player humanoids within `radius` (horizontally) of `center`.
 local function humanoidsInRadius(center: Vector3, radius: number): { Humanoid }
 	local found = {}
 	for _, player in Players:GetPlayers() do
 		local character = player.Character
 		local humanoid = character and character:FindFirstChildOfClass("Humanoid")
 		local root = character and character:FindFirstChild("HumanoidRootPart") :: BasePart?
-		if humanoid and root and humanoid.Health > 0 then
+		if humanoid and root and humanoid.Health > 0 and PlotService.CanBeTargeted(player) then
 			local offset = root.Position - center
 			if flat(offset).Magnitude <= radius + 1 and math.abs(offset.Y) <= 12 + radius * 0.4 then
 				table.insert(found, humanoid)
@@ -102,6 +108,7 @@ local RUNNERS: { [string]: (ctx: Context, spec: Spec) -> () } = {}
 
 function RUNNERS.Slam(ctx, spec)
 	hold(ctx)
+	ctx.PlayAction("Slam", spec.Windup)
 	local center = ctx.Root.Position
 	BossEffects.Telegraph(center, spec.Radius, spec.Windup, ctx.Color)
 	task.wait(spec.Windup)
@@ -122,6 +129,7 @@ function RUNNERS.Charge(ctx, spec)
 	local finish = start + direction * distance
 
 	face(ctx, finish)
+	ctx.PlayAction("Charge", spec.Windup, spec.Windup + distance / spec.Speed)
 	BossEffects.LineTelegraph(start, finish, spec.HitRadius * 2, spec.Windup, ctx.Color)
 	task.wait(spec.Windup)
 	if not ctx.IsAlive() then
@@ -153,6 +161,7 @@ end
 
 function RUNNERS.Blink(ctx, spec)
 	local targetRoot = ctx.TargetRoot
+	ctx.PlayAction("Blink", spec.Windup)
 	BossEffects.Shockwave(ctx.Root.Position, 4 * ctx.Stats.Scale, Color3.new(0, 0, 0))
 
 	-- Appear behind the target, standing on the ground.
@@ -203,6 +212,7 @@ end
 
 function RUNNERS.Drain(ctx, spec)
 	hold(ctx)
+	ctx.PlayAction("Drain", 0.6, 0.6 + spec.Duration)
 	BossEffects.Telegraph(ctx.Root.Position, spec.Radius, 0.6, ctx.Color)
 	task.wait(0.6)
 
@@ -232,6 +242,7 @@ end
 
 function RUNNERS.Meteor(ctx, spec)
 	hold(ctx)
+	ctx.PlayAction("Meteor", spec.Windup)
 	local targets: { Vector3 } = {}
 	for _, humanoid in humanoidsInRadius(ctx.Root.Position, spec.Range) do
 		local root = (humanoid.Parent :: Model):FindFirstChild("HumanoidRootPart") :: BasePart?
@@ -276,6 +287,7 @@ end
 
 function RUNNERS.Nova(ctx, spec)
 	hold(ctx)
+	ctx.PlayAction("Nova", spec.Windup)
 	local center = ctx.Root.Position
 	BossEffects.Telegraph(center, spec.Radius, spec.Windup, ctx.Color)
 	task.wait(spec.Windup)

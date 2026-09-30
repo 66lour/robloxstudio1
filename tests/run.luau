@@ -124,6 +124,47 @@ for _, bossRarity in Rarities.Order do
 	previousAvgRank = avgRank
 end
 
+-- Movement: every boss is a slow pursuer (8-10 studs/s; players run at 16).
+for _, def in BossRoster.List do
+	check(def.WalkSpeed >= 8 and def.WalkSpeed <= 10, `{def.Id} WalkSpeed {def.WalkSpeed} outside 8-10`)
+end
+
+-- HP targets: a Common boss has ~5,000 HP and a Mythic ~100,000.
+check(Rarities.Get("Common").BaseHealth == 5000, "Common base HP should be 5,000")
+check(Rarities.Get("Mythic").BaseHealth == 100000, "Mythic base HP should be 100,000")
+
+-- Weapons: starter 5, Rusty Pumpkin Carver 15, Reaper's Mythic Blade 1000,
+-- strictly stronger up the ladder.
+local WeaponCatalog = Harness.require(shared.Config.WeaponCatalog)
+local previous = 0
+local sawStarter = false
+for _, weapon in WeaponCatalog.List do
+	if weapon.Starter then
+		sawStarter = true
+		check(weapon.Damage == 5, `starter weapon {weapon.Name} should deal 5`)
+	else
+		check(weapon.Damage > previous, `{weapon.Name} should deal more than the weapon before it`)
+	end
+	previous = weapon.Damage
+end
+check(sawStarter, "there should be a starter weapon")
+check(WeaponCatalog.ByName["Rusty Pumpkin Carver"] and WeaponCatalog.ByName["Rusty Pumpkin Carver"].Damage == 15, "Rusty Pumpkin Carver should deal 15")
+check(WeaponCatalog.ByName["Reaper's Mythic Blade"] and WeaponCatalog.ByName["Reaper's Mythic Blade"].Damage == 1000, "Reaper's Mythic Blade should deal 1000")
+local ultimate = WeaponCatalog.List[#WeaponCatalog.List]
+check(ultimate.Name == "Reaper's Mythic Blade", "the Reaper's Mythic Blade should be the strongest weapon")
+
+print("\nTime to kill (one player swinging nonstop):")
+for _, weaponName in { "Splintered Stake", "Rusty Pumpkin Carver", "Reaper's Mythic Blade" } do
+	local weapon = WeaponCatalog.ByName[weaponName]
+	local dps = weapon.Damage / weapon.Cooldown
+	local line = string.format("  %-22s %5d dmg  ", weapon.Name, weapon.Damage)
+	for _, id in { "cursed_skeleton", "pale_king" } do
+		local stats = BossRoster.GetStats(BossRoster.ById[id])
+		line ..= string.format("%s %6.0fs  ", BossRoster.ById[id].Rarity, stats.MaxHealth / dps)
+	end
+	print(line)
+end
+
 -- Seeds are deterministic.
 local a = LootRoller.Roll(BossRoster.ById.pale_king, Random.new(7))
 local b = LootRoller.Roll(BossRoster.ById.pale_king, Random.new(7))

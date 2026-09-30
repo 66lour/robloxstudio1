@@ -17,47 +17,46 @@ Projeto Roblox sincronizado com o Studio via [Rojo](https://rojo.space).
 
 Para gerar um place: `rojo build -o game.rbxl`.
 
-## Bosses & Loot (Step 3)
+## Bosses, Loot & Weapons
 
-15 world bosses in 6 rarities. Kills drop Pets and Armors straight into every contributor's saved inventory.
+15 world bosses in 6 rarities. **One boss per map**: it climbs out of the Dark
+Portal, hunts players who own a tycoon plot, and 20 minutes after it's defeated
+the next one emerges. Kills drop Pets and Armors into every contributor's saved
+inventory.
 
-| Rarity | Bosses | Spawn chance (each) | HP | Damage | Size | Loot rolls |
-|---|---|---|---|---|---|---|
-| Common | Cursed Skeleton, Rotting Ghoul, Bog Hag | 16% | ~1.5k | ~12 | 1.5× | 1 |
-| Uncommon | Wraith Knight, Plague Rat King, Gravebound Golem | 9% | ~4k | ~18 | 2.0× | 1 (≥ Uncommon) |
-| Rare | Ancient Pumpkin Lord, Bloodmoon Werewolf, Crypt Lich | 5% | ~10k | ~27 | 2.6× | 2 (1st ≥ Rare) |
-| Epic | Frostbound Banshee, Abyssal Warden | 3% | ~25k | ~38 | 3.3× | 2 (1st ≥ Epic) |
-| Legendary | Infernal Colossus, The Eclipse Seraph | 1.5% | ~60k | ~58 | 4.2× | 3 (1st ≥ Legendary) |
-| Mythic | Nyx'thal, The Pale King | 0.5% | ~150k | ~84 | 5.5× | 3 (1st ≥ Mythic) |
+**Studio setup, tycoon integration, custom animations and weapons: see [docs/BOSS_SETUP.md](docs/BOSS_SETUP.md).**
 
-Every boss also has its own exclusive item (3–10% drop chance) and its own mix of abilities (Slam, Charge, Blink, Drain, Meteor, Nova, Enrage).
+| Rarity | Bosses (walk style) | Spawn chance (each) | HP | Size |
+|---|---|---|---|---|
+| Common | Cursed Skeleton (March), Rotting Ghoul (Shamble), Bog Hag (Hunch) | 16% | ~5,000 | 1.4–1.6× |
+| Uncommon | Wraith Knight (GlideArmor), Plague Rat King (Scurry), Gravebound Golem (Lumber) | 9% | ~9,000 | 1.9–2.1× |
+| Rare | Ancient Pumpkin Lord (Scarecrow), Bloodmoon Werewolf (Stalk), Crypt Lich (Levitate) | 5% | ~16,500 | 2.5–2.7× |
+| Epic | Frostbound Banshee (Glide), Abyssal Warden (Tread) | 3% | ~30,000 | 3.3× |
+| Legendary | Infernal Colossus (Stomp), The Eclipse Seraph (Soar) | 1.5% | ~55,000 | 4.0–4.6× |
+| Mythic | Nyx'thal (Drift), The Pale King (Regal) | 0.5% | ~100,000 | 5.5–6.1× |
 
-**Where to tune things**
-
-- `src/shared/Config/Rarities.luau`: tier colors, spawn weights, base HP, damage and size
-- `src/shared/Config/BossRoster.luau`: the 15 bosses (looks, abilities, ±10% stat modifiers)
-- `src/shared/Config/ItemCatalog.luau`: all Pets and Armors (item ids are saved, so never rename one)
-- `src/shared/Config/LootTables.luau`: loot rarity weights per boss tier
-- `src/server/Bosses/BossSettings.luau`: spawn cap, interval, aggro and leash ranges
-
-Loading these modules checks the data: a boss that breaks the rarity scaling, or a missing exclusive item, raises an error.
-
-**Setup in Studio**
-
-- Add a `Workspace.BossSpawns` folder with Parts where bosses should appear. Without one, bosses spawn in a ring around the origin.
-- Optional: put custom models named after a boss id (e.g. `pumpkin_lord`) in `ServerStorage.BossModels`. Each needs a Humanoid and a PrimaryPart. Bosses without one get a procedural model.
-- To test saving, turn on *Game Settings → Security → Enable Studio Access to API Services*. Without it the inventory runs in memory.
-- In Studio every player gets a **Test Soulreaver** sword, and chatting `!boss <id>` (e.g. `!boss pale_king`) spawns a boss.
-
-**Damage credit**
-
-`DamageTracker` records damage per player on each boss (`Model.DamageTags`). Your combat code should call `DamageTracker.ApplyDamage(bossModel, player, amount)`. Weapons that use the classic `creator` ObjectValue tag are credited automatically.
+- **Models**: each boss is a detailed Motor6D rig built by its own design module
+  (`src/server/Bosses/Models/Designs`), 106–248 parts, with particles, runes and
+  lights.
+- **Animation**: procedural and client-side, with 15 themed walk/idle styles and
+  attack poses synced to each ability's telegraph. You can swap in uploaded
+  Animation Editor animations.
+- **Movement**: 8–10 studs/s, so bosses are slow, relentless pursuers (players
+  run at 16). They path around obstacles.
+- **Targeting**: only players assigned to a plot, and never inside their own
+  tycoon. Guests are ignored and can't be hurt.
+- **Weapons** (`WeaponCatalog`): starter 5 → Rusty Pumpkin Carver 15 → … →
+  Reaper's Mythic Blade 1000 damage per hit, all dealt on the server.
 
 **Tests**
 
-With [Lune](https://github.com/lune-org/lune) installed (`aftman install`), run:
+With [Lune](https://github.com/lune-org/lune) installed (`aftman install`), run from the repo root:
 
 ```
-lune run tests/run         # roster, scaling, spawn odds and loot odds
+lune run tests/run         # roster, scaling, spawn odds, loot odds, weapon ladder
+lune run tests/models      # builds all 15 rigs: joints, attachments, budgets, size order
+lune run tests/poses       # animation math on real rigs (limbs, wings, capes, orbits)
+lune run tests/plots       # plot assignment and safe-zone detection
+lune run tests/weapons     # builds every weapon Tool
 lune run tests/inventory   # DataStore inventory against a mock store (~16 s)
 ```

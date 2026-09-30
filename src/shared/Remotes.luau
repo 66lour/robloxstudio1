@@ -4,12 +4,14 @@
 --   LootDropped       server -> client  a player received boss loot
 --   BossAnnouncement  server -> clients a boss spawned or was defeated
 --   InventoryUpdated  server -> client  full inventory snapshot after a change
+--   Notice            server -> client  short message (e.g. "claim a plot first")
+--   DamageDealt       server -> client  your hit landed: show a damage number
 
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
 local RunService = game:GetService("RunService")
 
 local FOLDER_NAME = "Remotes"
-local EVENT_NAMES = { "LootDropped", "BossAnnouncement", "InventoryUpdated" }
+local EVENT_NAMES = { "LootDropped", "BossAnnouncement", "InventoryUpdated", "Notice", "DamageDealt" }
 
 local Remotes = {}
 
