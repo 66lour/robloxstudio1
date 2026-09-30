@@ -1,4 +1,3 @@
-local ReplicatedStorage = game:GetService("ReplicatedStorage")
-local Hello = require(ReplicatedStorage.Shared.Hello)
+local LootNotifications = require(script.UI.LootNotifications)
 
-print(Hello.greet("cliente"))
+LootNotifications.Start()

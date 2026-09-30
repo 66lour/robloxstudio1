@@ -1,4 +1,11 @@
-local ReplicatedStorage = game:GetService("ReplicatedStorage")
-local Hello = require(ReplicatedStorage.Shared.Hello)
+local RunService = game:GetService("RunService")
 
-print(Hello.greet("servidor"))
+local InventoryService = require(script.Services.InventoryService)
+local BossService = require(script.Bosses.BossService)
+
+InventoryService.Start()
+BossService.Start()
+
+if RunService:IsStudio() then
+	require(script.Dev.DevTools).Start()
+end
